@@ -137,12 +137,12 @@ app.get("/api/ai/settings", async (_request, response) => {
     item,
     providers: supportedAiProviders.map((provider) => ({
       id: provider,
-      label: provider === "codex-cli" ? "Codex CLI" : "Heuristic Fallback",
+      label: provider === "codex-cli" ? "Codex CLI" : "启发式回退",
       available: isProviderAvailable(provider),
       description:
         provider === "codex-cli"
-          ? "Use the local codex CLI configured on the server."
-          : "Use the built-in local summarization fallback with no external CLI.",
+          ? "使用服务器上配置好的本地 codex CLI。"
+          : "使用内置的本地启发式回退，不依赖外部 CLI。",
     })),
   });
 });
@@ -152,14 +152,14 @@ app.put("/api/ai/settings", async (request, response) => {
 
   if (!isAiProvider(provider)) {
     response.status(400).json({
-      error: `Unsupported provider. Use one of: ${supportedAiProviders.join(", ")}.`,
+      error: `不支持的 provider，请使用：${supportedAiProviders.join("、")}。`,
     });
     return;
   }
 
   if (!isProviderAvailable(provider)) {
     response.status(400).json({
-      error: `${provider} is not available in the current server environment.`,
+      error: `${provider} 在当前服务器环境中不可用。`,
     });
     return;
   }
@@ -178,7 +178,7 @@ app.get("/api/books/:bookId", async (request, response) => {
   const book = items.find((item) => item.id === request.params.bookId);
 
   if (!book) {
-    response.status(404).json({ error: "Book not found." });
+    response.status(404).json({ error: "未找到图书。" });
     return;
   }
 
@@ -197,7 +197,7 @@ app.get("/api/books/:bookId/chapters/:chapterId/study-guide", async (request, re
   const chapter = book.chapters.find((item) => item.id === request.params.chapterId);
 
   if (!chapter) {
-    response.status(404).json({ error: "Chapter not found." });
+    response.status(404).json({ error: "未找到章节。" });
     return;
   }
 
@@ -213,7 +213,7 @@ app.get("/api/books/:bookId/chapters/:chapterId/study-guide", async (request, re
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
 
   if (!latestGuide?.result) {
-    response.status(404).json({ error: "Study guide not generated yet." });
+    response.status(404).json({ error: "当前章节还没有生成导学。" });
     return;
   }
 
@@ -225,14 +225,14 @@ app.get("/api/books/:bookId/chapters/:chapterId/study-guide-jobs", async (reques
   const book = items.find((item) => item.id === request.params.bookId);
 
   if (!book) {
-    response.status(404).json({ error: "Book not found." });
+    response.status(404).json({ error: "未找到图书。" });
     return;
   }
 
   const chapter = book.chapters.find((item) => item.id === request.params.chapterId);
 
   if (!chapter) {
-    response.status(404).json({ error: "Chapter not found." });
+    response.status(404).json({ error: "未找到章节。" });
     return;
   }
 
@@ -250,14 +250,14 @@ app.post("/api/books/:bookId/chapters/:chapterId/study-guide-jobs", async (reque
   const book = items.find((item) => item.id === request.params.bookId);
 
   if (!book) {
-    response.status(404).json({ error: "Book not found." });
+    response.status(404).json({ error: "未找到图书。" });
     return;
   }
 
   const chapter = book.chapters.find((item) => item.id === request.params.chapterId);
 
   if (!chapter) {
-    response.status(404).json({ error: "Chapter not found." });
+    response.status(404).json({ error: "未找到章节。" });
     return;
   }
 
@@ -333,8 +333,8 @@ app.post(
   async (request, response) => {
     const file = request.file;
 
-    if (!file) {
-      response.status(400).json({ error: "A file is required." });
+  if (!file) {
+      response.status(400).json({ error: "请先选择一个文件。" });
       return;
     }
 
@@ -342,7 +342,7 @@ app.post(
 
     if (!format) {
       response.status(400).json({
-        error: "Unsupported format. Use PDF, EPUB, Markdown, or text files.",
+        error: "不支持的格式，请使用 PDF、EPUB、Markdown 或文本文件。",
       });
       return;
     }
@@ -542,16 +542,18 @@ async function buildHeuristicStudyGuide(book: BookRecord, chapter: ChapterRecord
 
   const nextChapter = book.chapters.find((item) => item.order === chapter.order + 1);
   const previousChapter = book.chapters.find((item) => item.order === chapter.order - 1);
-  const focus = sentences[0] || `${chapter.title} is a core section in ${book.title}.`;
+  const focus = sentences.length > 0
+    ? `本章主要围绕关键概念、示例和推理链展开，阅读时要先抓住作者如何铺垫问题，再看他如何给出结论。`
+    : `《${chapter.title}》是《${book.title}》中的核心章节，需要围绕定义、例子和推理顺序来理解。`;
   const whyItMatters = nextChapter
-    ? `This chapter sets up ideas that likely flow into "${nextChapter.title}", so understanding its definitions and examples first will reduce friction later.`
-    : `This chapter is part of the later-stage material in ${book.title}, so it likely consolidates earlier concepts into a more complete mental model.`;
+    ? `这一章会为下一章《${nextChapter.title}》铺垫概念，先把这里的定义和例子吃透，后续阅读会更顺。`
+    : `这一章更像是《${book.title}》后半段的收束部分，会把前面的概念整理成更完整的理解框架。`;
   const prerequisites = [
     previousChapter
-      ? `Review the previous chapter: ${previousChapter.title}.`
-      : `Review the book's introduction and earlier definitions before deep study.`,
-    `Track repeated nouns, code terms, and architecture labels in "${chapter.title}".`,
-    `Read with the goal of reconstructing the argument order, not just memorizing headlines.`,
+      ? `先回顾上一章《${previousChapter.title}》。`
+      : `先把前面的导言和基础定义过一遍，再进入深读。`,
+    `留意《${chapter.title}》里反复出现的名词、代码术语和结构标签。`,
+    `阅读时优先还原作者的论证顺序，而不是只记标题。`,
   ];
 
   const deepDive = buildDeepDive(chapter.title, sentences);
@@ -575,7 +577,7 @@ async function buildHeuristicStudyGuide(book: BookRecord, chapter: ChapterRecord
       reviewQuestions: buildReviewQuestions(chapter.title, terminology, nextChapter),
       practiceIdeas: buildPracticeIdeas(chapter.title, book.format),
     },
-    sourcePreview: previewParagraphs.length > 0 ? previewParagraphs : [focus],
+    sourcePreview: previewParagraphs.length > 0 ? buildChinesePreviewItems(chapter.title, focus) : [focus],
   };
 }
 
@@ -644,27 +646,28 @@ async function buildStudyGuideWithCodex(book: BookRecord, chapter: ChapterRecord
   };
 
   const prompt = [
-    "You are generating a structured study guide for an uploaded book chapter.",
-    "Return only content that fits the provided JSON schema.",
-    "Do not mention the schema. Do not include markdown fences.",
-    "Preserve fidelity. Avoid shallow summarization.",
+    "你正在为上传的图书章节生成结构化学习导学。",
+    "所有最终输出必须使用简体中文。",
+    "如果原文是英文或其他语言，可以保留少量关键技术词，但解释、标题、问题与复习内容必须是中文。",
+    "只输出符合 JSON schema 的内容，不要提及 schema，不要使用 markdown 代码块。",
+    "要尽量保真，避免把内容压缩成浅层摘要。",
     "",
-    `Book title: ${book.title}`,
-    `Book format: ${book.format}`,
-    `Chapter title: ${chapter.title}`,
+    `图书标题：${book.title}`,
+    `图书格式：${book.format}`,
+    `章节标题：${chapter.title}`,
     "",
-    "Required output behavior:",
-    "- snapshot.focus: explain the central idea of the chapter in 2-4 sentences",
-    "- snapshot.whyItMatters: explain where this chapter fits in the learning path",
-    "- snapshot.prerequisites: 3 concise bullets",
-    "- deepDive: 2-4 sections with clear headings and dense explanations",
-    "- terminology: 3-6 important terms with clear meanings",
-    "- retention.keyTakeaways: 3-5 bullets",
-    "- retention.reviewQuestions: 4-6 questions",
-    "- retention.practiceIdeas: 2-4 practical study actions",
-    "- sourcePreview: 1-3 short quoted or paraphrased source snippets",
+    "输出要求：",
+    "- snapshot.focus：用 2-4 句中文解释这一章的核心思想",
+    "- snapshot.whyItMatters：说明这一章在整本书中的位置和作用",
+    "- snapshot.prerequisites：给出 3 条中文前置建议",
+    "- deepDive：给出 2-4 个有清晰标题的深入小节，解释要密一点",
+    "- terminology：列出 3-6 个重要术语，并用中文解释",
+    "- retention.keyTakeaways：给出 3-5 条关键要点",
+    "- retention.reviewQuestions：给出 4-6 个中文复习问题",
+    "- retention.practiceIdeas：给出 2-4 个可执行的学习动作",
+    "- sourcePreview：给出 1-3 条中文改写的原文要点预览，不要长引文",
     "",
-    "Chapter excerpt:",
+    "章节原文摘录：",
     excerpt || chapter.title,
   ].join("\n");
 
@@ -793,9 +796,9 @@ function buildDeepDive(chapterTitle: string, sentences: string[]) {
   if (segments.length === 0) {
     return [
       {
-        heading: "Main idea",
-        explanation: `${chapterTitle} should be studied by tracking its definitions, examples, and tradeoffs in order.`,
-        signals: ["definition", "example", "tradeoff"],
+        heading: "核心判断",
+        explanation: `学习《${chapterTitle}》时，要按定义、例子和权衡顺序去读，才能抓住作者真正想表达的层次。`,
+        signals: ["定义", "示例", "权衡"],
       },
     ];
   }
@@ -803,11 +806,11 @@ function buildDeepDive(chapterTitle: string, sentences: string[]) {
   return segments.map((segment, index) => ({
     heading:
       index === 0
-        ? "Concept framing"
+        ? "概念铺垫"
         : index === 1
-          ? "Mechanism and examples"
-          : "Implications and cautions",
-    explanation: segment.join(" "),
+          ? "机制与示例"
+          : "影响与注意点",
+    explanation: buildChineseExplanation(segment),
     signals: extractSignals(segment.join(" ")),
   }));
 }
@@ -829,15 +832,15 @@ function extractTerminology(chapterTitle: string, sentences: string[]) {
 
   return terms.map((term) => ({
     term,
-    meaning: `In this chapter, "${term}" is important enough that you should identify where the author defines it, applies it, and contrasts it with alternatives.`,
+    meaning: `在这一章里，"${term}" 是关键术语。你需要找出作者在哪里定义它、如何使用它，以及它和其他概念的区别。`,
   }));
 }
 
 function buildKeyTakeaways(chapterTitle: string, sentences: string[]) {
   const base = [
-    `Map the chapter around "${chapterTitle}" instead of memorizing isolated details.`,
-    `Keep the author’s reasoning order intact when taking notes.`,
-    `Mark every example, caveat, or code fragment that changes interpretation.`,
+    `围绕《${chapterTitle}》来组织笔记，不要只背零散细节。`,
+    `做笔记时尽量保留作者的推理顺序。`,
+    `把会改变理解的例子、提醒和代码片段单独标出来。`,
   ];
 
   const derived = sentences.slice(0, 2).map((sentence) => sentence.replace(/\s+/g, " ").trim());
@@ -850,17 +853,17 @@ function buildReviewQuestions(
   nextChapter: ChapterRecord | undefined,
 ) {
   const questions = [
-    `What problem is "${chapterTitle}" trying to solve or clarify?`,
-    `Which definitions in this chapter are foundational rather than optional?`,
-    `Which example or mechanism best demonstrates the chapter’s main claim?`,
+    `《${chapterTitle}》想解决或澄清什么问题？`,
+    `这一章里哪些定义是基础性的，而不是可有可无的？`,
+    `哪个例子或机制最能说明本章的核心主张？`,
   ];
 
   if (terminology[0]) {
-    questions.push(`How would you explain "${terminology[0].term}" without using the book’s exact wording?`);
+    questions.push(`如果不用书里的原话，你会怎么解释“${terminology[0].term}”？`);
   }
 
   if (nextChapter) {
-    questions.push(`How does this chapter prepare you for "${nextChapter.title}"?`);
+    questions.push(`这一章是如何为《${nextChapter.title}》做铺垫的？`);
   }
 
   return questions.slice(0, 5);
@@ -868,12 +871,31 @@ function buildReviewQuestions(
 
 function buildPracticeIdeas(chapterTitle: string, format: string) {
   return [
-    `Write a one-page note that reconstructs the full argument order of "${chapterTitle}".`,
-    `Make a glossary card set for the repeated terms in this chapter.`,
+    `写一页笔记，按顺序重建《${chapterTitle}》的完整论证链。`,
+    `把这一章里反复出现的术语整理成卡片。`,
     format === "pdf" || format === "epub"
-      ? `Annotate where the author introduces an idea, gives an example, and adds a caveat.`
-      : `Mark the exact section boundaries where the chapter shifts from concept to example to implication.`,
+      ? `标出作者在哪里提出概念、给出例子以及补充限制条件。`
+      : `标出章节从概念切换到例子再到结论的具体位置。`,
   ];
+}
+
+function buildChinesePreviewItems(chapterTitle: string, focus: string) {
+  return [
+    `《${chapterTitle}》的开头通常在建立核心问题和阅读视角。`,
+    "后面的内容会逐步展开机制、示例和作者的推理顺序。",
+    `如果只看一遍，至少要记住这章是在为整体理解搭桥，而不是单独堆概念。`,
+    focus,
+  ].slice(0, 3);
+}
+
+function buildChineseExplanation(sentences: string[]) {
+  const signals = extractSignals(sentences.join(" "));
+
+  if (signals.length === 0) {
+    return "这一部分主要帮助你理解作者的定义、例子与结论之间的关系。";
+  }
+
+  return `这一部分主要围绕 ${signals.slice(0, 3).map((item) => `「${item}」`).join("、")} 展开，重点是理解作者如何把概念、例子和结论串成一条推理链。`;
 }
 
 function detectFormat(fileName: string, mimeType: string) {
@@ -1051,7 +1073,7 @@ function fallbackSingleChapter() {
   return [
     {
       id: "chapter-1",
-      title: "Imported content",
+      title: "导入内容",
       level: 1,
       order: 1,
     },

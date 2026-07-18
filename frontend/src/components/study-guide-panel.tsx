@@ -91,7 +91,7 @@ export function StudyGuidePanel({
       const payload = (await response.json()) as { item?: StudyGuideJob; error?: string };
 
       if (!response.ok || !payload.item) {
-        setError(payload.error || "Failed to check study guide job.");
+        setError(payload.error || "查询任务状态失败。");
         return;
       }
 
@@ -105,7 +105,7 @@ export function StudyGuidePanel({
       }
 
       if (polledJob.status === "failed") {
-        setError(polledJob.error || "Study guide generation failed.");
+        setError(polledJob.error || "章节导学生成失败。");
       }
     }, 2500);
 
@@ -119,7 +119,7 @@ export function StudyGuidePanel({
     const payload = (await response.json()) as StudyGuideJobListResponse;
 
     if (!response.ok || !payload.items) {
-      setError(payload.error || "Failed to load study guide history.");
+      setError(payload.error || "加载任务历史失败。");
       return;
     }
 
@@ -139,7 +139,7 @@ export function StudyGuidePanel({
     const payload = (await response.json()) as StudyGuideJobCreateResponse;
 
     if (!response.ok || !payload.item) {
-      setError(payload.error || "Failed to create study guide job.");
+      setError(payload.error || "创建章节导学任务失败。");
       return;
     }
 
@@ -173,22 +173,22 @@ export function StudyGuidePanel({
 
   const statusText = useMemo(() => {
     if (!job) {
-      return guide ? `Latest provider: ${guide.provider}` : "No study guide generated yet.";
+      return guide ? `最近一次生成来源：${guide.provider}` : "当前章节还没有可用导学。";
     }
 
     if (job.status === "queued") {
-      return `Queued with ${job.providerRequested}.`;
+      return `任务已入队，等待 ${formatProviderName(job.providerRequested)} 开始处理。`;
     }
 
     if (job.status === "running") {
-      return `Generating with ${job.providerRequested}...`;
+      return `正在使用 ${formatProviderName(job.providerRequested)} 生成章节导学...`;
     }
 
     if (job.status === "succeeded") {
-      return `Completed with ${job.result?.provider || job.providerRequested}.`;
+      return `已完成，输出来自 ${formatProviderName(job.result?.provider || job.providerRequested)}。`;
     }
 
-    return `Failed: ${job.error || "unknown error"}`;
+    return `生成失败：${job.error || "未知错误"}`;
   }, [guide, job]);
 
   const hasRunningJob = job?.status === "queued" || job?.status === "running";
@@ -197,22 +197,22 @@ export function StudyGuidePanel({
     <div className="detail-card">
       <div className="detail-topbar">
         <div>
-          <p className="section-label">Study Guide</p>
+          <p className="section-label">章节导学</p>
           <h1>{chapterTitle}</h1>
           <p className="lede">{bookTitle}</p>
         </div>
         <div className="action-row">
           <button className="secondary-cta" disabled={isPending || hasRunningJob} onClick={() => void handleGenerate(true)} type="button">
-            {isPending ? "Starting..." : "Regenerate"}
+            {isPending ? "提交中..." : "重新生成"}
           </button>
           <button className="primary-cta" disabled={isPending} onClick={() => void handleGenerate()} type="button">
-            {isPending ? "Starting..." : "Generate with AI"}
+            {isPending ? "提交中..." : "开始生成"}
           </button>
         </div>
       </div>
 
       <div className="study-status-bar">
-        <strong>Status</strong>
+        <strong>任务状态</strong>
         <span>{statusText}</span>
       </div>
 
@@ -221,13 +221,13 @@ export function StudyGuidePanel({
       <section className="study-block">
         <div className="history-header">
           <div>
-            <p className="section-label">Job History</p>
-            <h2>Recent runs</h2>
+            <p className="section-label">任务历史</p>
+            <h2>最近生成记录</h2>
           </div>
-          <span className="history-meta">{history.length} items</span>
+          <span className="history-meta">{history.length} 条记录</span>
         </div>
         {history.length === 0 ? (
-          <p className="panel-copy">No job history yet for this chapter.</p>
+          <p className="panel-copy">这个章节还没有生成历史。</p>
         ) : (
           <div className="history-list">
             {history.map((item) => (
@@ -238,7 +238,7 @@ export function StudyGuidePanel({
                 type="button"
               >
                 <span className={`history-badge status-${item.status}`}>{item.status}</span>
-                <strong>{item.result?.provider || item.providerRequested}</strong>
+                <strong>{formatProviderName(item.result?.provider || item.providerRequested)}</strong>
                 <span>{formatTimestamp(item.updatedAt)}</span>
               </button>
             ))}
@@ -249,19 +249,19 @@ export function StudyGuidePanel({
       {!guide ? (
         <section className="study-block">
           <p className="panel-copy">
-            No completed study guide yet. Start a generation job to create a chapter explanation.
+            当前还没有完成的章节导学。你可以直接启动一次生成任务，系统会优先复用已有缓存或历史结果。
           </p>
         </section>
       ) : (
         <>
           <div className="detail-grid">
             <section className="study-block">
-              <p className="section-label">Snapshot</p>
-              <h2>Chapter focus</h2>
+              <p className="section-label">章节快照</p>
+              <h2>本章重点</h2>
               <p>{guide.snapshot.focus}</p>
-              <h3>Why it matters</h3>
+              <h3>为什么重要</h3>
               <p>{guide.snapshot.whyItMatters}</p>
-              <h3>Prerequisites</h3>
+              <h3>阅读前提</h3>
               <ul className="study-list">
                 {guide.snapshot.prerequisites.map((item) => (
                   <li key={item}>{item}</li>
@@ -270,8 +270,8 @@ export function StudyGuidePanel({
             </section>
 
             <section className="study-block">
-              <p className="section-label">Preview</p>
-              <h2>Source preview</h2>
+              <p className="section-label">原文预览</p>
+              <h2>章节片段</h2>
               <div className="preview-stack">
                 {guide.sourcePreview.map((item) => (
                   <p key={item} className="preview-card">
@@ -283,7 +283,7 @@ export function StudyGuidePanel({
           </div>
 
           <section className="study-section">
-            <p className="section-label">Deep Dive</p>
+            <p className="section-label">深入解读</p>
             <div className="study-stack">
               {guide.deepDive.map((item) => (
                 <article key={item.heading} className="study-block">
@@ -305,7 +305,7 @@ export function StudyGuidePanel({
 
           <section className="detail-grid">
             <section className="study-block">
-              <p className="section-label">Terminology</p>
+              <p className="section-label">术语拆解</p>
               <div className="study-stack">
                 {guide.terminology.map((item) => (
                   <article key={item.term}>
@@ -317,20 +317,20 @@ export function StudyGuidePanel({
             </section>
 
             <section className="study-block">
-              <p className="section-label">Retention</p>
-              <h3>Key takeaways</h3>
+              <p className="section-label">复习整理</p>
+              <h3>关键要点</h3>
               <ul className="study-list">
                 {guide.retention.keyTakeaways.map((item) => (
                   <li key={item}>{item}</li>
                 ))}
               </ul>
-              <h3>Review questions</h3>
+              <h3>复习问题</h3>
               <ul className="study-list">
                 {guide.retention.reviewQuestions.map((item) => (
                   <li key={item}>{item}</li>
                 ))}
               </ul>
-              <h3>Practice ideas</h3>
+              <h3>练习建议</h3>
               <ul className="study-list">
                 {guide.retention.practiceIdeas.map((item) => (
                   <li key={item}>{item}</li>
@@ -356,4 +356,16 @@ function formatTimestamp(value: string) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function formatProviderName(value: string | undefined) {
+  if (value === "codex-cli") {
+    return "Codex CLI";
+  }
+
+  if (value === "heuristic") {
+    return "启发式回退";
+  }
+
+  return value || "未知引擎";
 }

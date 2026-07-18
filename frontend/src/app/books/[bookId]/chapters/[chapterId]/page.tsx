@@ -88,13 +88,13 @@ export default async function ChapterStudyGuidePage({
         <main className="page-shell">
           <section className="detail-shell">
             <div className="detail-card">
-              <p className="section-label">Missing</p>
-              <h1>Study guide unavailable</h1>
+              <p className="section-label">未找到内容</p>
+              <h1>章节导学不可用</h1>
               <p className="panel-copy">
-                The requested book or chapter could not be loaded.
+                请求的图书或章节暂时无法加载。
               </p>
               <Link className="secondary-cta" href="/">
-                Back to library
+                返回首页
               </Link>
             </div>
           </section>
@@ -110,10 +110,10 @@ export default async function ChapterStudyGuidePage({
         <main className="page-shell">
           <section className="detail-shell">
             <div className="detail-card">
-              <p className="section-label">Missing</p>
-              <h1>Chapter unavailable</h1>
+              <p className="section-label">未找到内容</p>
+              <h1>章节不存在</h1>
               <Link className="secondary-cta" href="/">
-                Back to library
+                返回首页
               </Link>
             </div>
           </section>
@@ -133,7 +133,7 @@ export default async function ChapterStudyGuidePage({
           />
           <div className="detail-footer">
             <Link className="secondary-cta" href="/">
-              Back to library
+              返回首页
             </Link>
           </div>
         </section>
@@ -155,7 +155,7 @@ export default async function ChapterStudyGuidePage({
         />
         <div className="detail-footer">
           <Link className="secondary-cta" href="/">
-            Back to library
+            返回首页
           </Link>
         </div>
       </section>

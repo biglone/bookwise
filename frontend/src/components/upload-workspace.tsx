@@ -44,7 +44,7 @@ export function UploadWorkspace({ initialBooks }: UploadWorkspaceProps) {
     const payload = (await response.json()) as { item?: Book; error?: string };
 
     if (!response.ok || !payload.item) {
-      setError(payload.error || "Upload failed.");
+      setError(payload.error || "上传失败。");
       return;
     }
 
@@ -55,82 +55,101 @@ export function UploadWorkspace({ initialBooks }: UploadWorkspaceProps) {
   }
 
   return (
-    <section className="workspace">
-      <div className="upload-panel">
-        <p className="section-label">Upload</p>
-        <h2>上传一本书并抽取章节</h2>
+    <section className="workspace-shell">
+      <div className="workspace-header">
+        <div>
+          <p className="section-label">书库工作台</p>
+          <h2>上传、筛选并进入章节导学</h2>
+        </div>
         <p className="panel-copy">
-          当前支持 `PDF`、`EPUB`、`Markdown`、`Text`。上传后后端会返回书籍记录和可用章节目录，作为后续分章导学生成的输入。
+          当前书库里的每本书都会先被解析为章节树，再进入章节导学页面生成更完整的学习内容。
         </p>
-        <form
-          className="upload-form"
-          action={async (formData) => {
-            await handleSubmit(formData);
-          }}
-        >
-          <label className="file-input">
-            <span>Choose book file</span>
-            <input name="book" type="file" accept=".pdf,.epub,.md,.markdown,.txt" required />
-          </label>
-          <button className="primary-cta" type="submit" disabled={isPending}>
-            {isPending ? "Uploading..." : "Upload and parse"}
-          </button>
-        </form>
-        {error ? <p className="error-text">{error}</p> : null}
       </div>
 
-      <div className="library-panel">
-        <div className="library-list">
-          <div className="library-header">
-            <p className="section-label">Library</p>
-            <h2>Books</h2>
-          </div>
-          {books.length === 0 ? (
-            <p className="empty-state">No books uploaded yet.</p>
-          ) : (
-            books.map((book) => (
-              <button
-                key={book.id}
-                className={book.id === selectedBook?.id ? "book-item active" : "book-item"}
-                onClick={() => setSelectedId(book.id)}
-                type="button"
-              >
-                <strong>{book.title}</strong>
-                <span>
-                  {book.format.toUpperCase()} · {book.chapterCount} chapters
-                </span>
-              </button>
-            ))
-          )}
+      <section className="workspace">
+        <div className="upload-panel">
+          <p className="section-label">上传入口</p>
+          <h3>上传一本书并抽取章节结构</h3>
+          <p className="panel-copy">
+            当前支持 `PDF`、`EPUB`、`Markdown`、`Text`。上传完成后，后端会返回书籍记录和章节目录，作为后续分章导学生成的输入。
+          </p>
+          <form
+            className="upload-form"
+            action={async (formData) => {
+              await handleSubmit(formData);
+            }}
+          >
+            <label className="file-input">
+              <span>选择图书文件</span>
+              <input name="book" type="file" accept=".pdf,.epub,.md,.markdown,.txt" required />
+            </label>
+            <button className="primary-cta" type="submit" disabled={isPending}>
+              {isPending ? "上传中..." : "上传并解析"}
+            </button>
+          </form>
+          {error ? <p className="error-text">{error}</p> : null}
         </div>
 
-        <div className="chapter-panel">
-          <div className="library-header">
-            <p className="section-label">Chapters</p>
-            <h2>{selectedBook ? selectedBook.title : "Waiting for upload"}</h2>
+        <div className="library-panel">
+          <div className="library-list">
+            <div className="library-header">
+              <p className="section-label">图书列表</p>
+              <h3>已上传书籍</h3>
+            </div>
+            {books.length === 0 ? (
+              <p className="empty-state">还没有上传图书。</p>
+            ) : (
+              books.map((book) => (
+                <button
+                  key={book.id}
+                  className={book.id === selectedBook?.id ? "book-item active" : "book-item"}
+                  onClick={() => setSelectedId(book.id)}
+                  type="button"
+                >
+                  <strong>{book.title}</strong>
+                  <span>
+                    {book.format.toUpperCase()} · {book.chapterCount} 章
+                  </span>
+                  <span>{formatDate(book.uploadedAt)}</span>
+                </button>
+              ))
+            )}
           </div>
-          {selectedBook ? (
-            <ol className="chapter-list">
-              {selectedBook.chapters.map((chapter) => (
-                <li key={chapter.id} className={`chapter-row level-${chapter.level}`}>
-                  <span className="chapter-order">{chapter.order}</span>
-                  <div className="chapter-meta">
-                    <span>{chapter.title}</span>
-                    <Link
-                      className="chapter-link"
-                      href={`/books/${selectedBook.id}/chapters/${chapter.id}`}
-                    >
-                      Open study guide
-                    </Link>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p className="empty-state">Upload a book to preview extracted chapters.</p>
-          )}
+
+          <div className="chapter-panel">
+            <div className="library-header">
+              <p className="section-label">章节目录</p>
+              <h3>{selectedBook ? selectedBook.title : "等待上传"}</h3>
+            </div>
+            {selectedBook ? (
+              <ol className="chapter-list">
+                {selectedBook.chapters.map((chapter) => (
+                  <li key={chapter.id} className={`chapter-row level-${chapter.level}`}>
+                    <span className="chapter-order">{chapter.order}</span>
+                    <div className="chapter-meta">
+                      <span>{chapter.title}</span>
+                      <Link
+                        className="chapter-link"
+                        href={`/books/${selectedBook.id}/chapters/${chapter.id}`}
+                      >
+                        进入章节导学
+                      </Link>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="empty-state">上传一本书后，这里会显示抽取出的章节目录。</p>
+            )}
+          </div>
         </div>
-      </div>
+      </section>
     </section>
   );
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    dateStyle: "medium",
+  }).format(new Date(value));
 }
