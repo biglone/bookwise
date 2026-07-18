@@ -8,6 +8,8 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
     ports:
       - "127.0.0.1:44000:4000"
+    volumes:
+      - bookwise-data:/app/data
     restart: unless-stopped
 
   frontend:
@@ -32,3 +34,6 @@ services:
     depends_on:
       - frontend
     restart: unless-stopped
+
+volumes:
+  bookwise-data:

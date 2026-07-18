@@ -1,3 +1,21 @@
+import { UploadWorkspace } from "@/components/upload-workspace";
+
+type Book = {
+  id: string;
+  title: string;
+  format: string;
+  language: string;
+  status: string;
+  uploadedAt: string;
+  chapterCount: number;
+  chapters: Array<{
+    id: string;
+    title: string;
+    level: number;
+    order: number;
+  }>;
+};
+
 async function getApiStatus() {
   const baseUrl = process.env.API_INTERNAL_URL || "http://localhost:4000";
 
@@ -14,6 +32,25 @@ async function getApiStatus() {
     return { ok: true, message: `${data.service}: ${data.status}` };
   } catch {
     return { ok: false, message: "backend unavailable" };
+  }
+}
+
+async function getBooks() {
+  const baseUrl = process.env.API_INTERNAL_URL || "http://localhost:4000";
+
+  try {
+    const response = await fetch(`${baseUrl}/api/books`, {
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      return [] as Book[];
+    }
+
+    const data = (await response.json()) as { items: Book[] };
+    return data.items;
+  } catch {
+    return [] as Book[];
   }
 }
 
@@ -44,6 +81,7 @@ const architecture = [
 
 export default async function Home() {
   const apiStatus = await getApiStatus();
+  const books = await getBooks();
 
   return (
     <main className="page-shell">
@@ -81,6 +119,8 @@ export default async function Home() {
         ))}
       </section>
 
+      <UploadWorkspace initialBooks={books} />
+
       <section id="architecture" className="split-section">
         <div>
           <p className="section-label">Architecture</p>
@@ -100,7 +140,7 @@ export default async function Home() {
         </div>
         <div className="skill-card">
           <p>
-            Docker Compose 负责拉起 `frontend`、`backend`、`cloudflared`。系统启动时通过 systemd 拉起整套服务，cloudflared 使用持久 tunnel token 自动重连。
+            Docker Compose 负责拉起 `frontend`、`backend`、`cloudflared`。系统启动时通过 systemd 拉起整套服务，cloudflared 使用持久 tunnel 凭据自动重连。
           </p>
           <code>deploy/docker-compose.yml</code>
         </div>
