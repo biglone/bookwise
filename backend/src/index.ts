@@ -32,6 +32,7 @@ const upload = multer({
 const storageRoot = path.join(process.cwd(), "data");
 const uploadsRoot = path.join(storageRoot, "uploads");
 const booksIndexPath = path.join(storageRoot, "books.json");
+const studyGuideJobsIndexPath = path.join(storageRoot, "study-guide-jobs.json");
 const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "",
@@ -85,6 +86,18 @@ type StudyGuide = {
   sourcePreview: string[];
 };
 
+type StudyGuideJob = {
+  id: string;
+  bookId: string;
+  chapterId: string;
+  status: "queued" | "running" | "succeeded" | "failed";
+  providerRequested: string;
+  createdAt: string;
+  updatedAt: string;
+  error: string | null;
+  result: StudyGuide | null;
+};
+
 app.use(
   cors({
     origin: allowedOrigin,
@@ -135,8 +148,72 @@ app.get("/api/books/:bookId/chapters/:chapterId/study-guide", async (request, re
     return;
   }
 
-  const guide = await generateStudyGuide(book, chapter);
-  response.json({ item: guide });
+  const jobs = await readStudyGuideJobs();
+  const latestGuide = jobs
+    .filter(
+      (item) =>
+        item.bookId === book.id &&
+        item.chapterId === chapter.id &&
+        item.status === "succeeded" &&
+        item.result,
+    )
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+
+  if (!latestGuide?.result) {
+    response.status(404).json({ error: "Study guide not generated yet." });
+    return;
+  }
+
+  response.json({ item: latestGuide.result });
+});
+
+app.post("/api/books/:bookId/chapters/:chapterId/study-guide-jobs", async (request, response) => {
+  const items = await readBooks();
+  const book = items.find((item) => item.id === request.params.bookId);
+
+  if (!book) {
+    response.status(404).json({ error: "Book not found." });
+    return;
+  }
+
+  const chapter = book.chapters.find((item) => item.id === request.params.chapterId);
+
+  if (!chapter) {
+    response.status(404).json({ error: "Chapter not found." });
+    return;
+  }
+
+  const job: StudyGuideJob = {
+    id: randomUUID(),
+    bookId: book.id,
+    chapterId: chapter.id,
+    status: "queued",
+    providerRequested: aiProvider,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    error: null,
+    result: null,
+  };
+
+  const jobs = await readStudyGuideJobs();
+  jobs.unshift(job);
+  await writeStudyGuideJobs(jobs);
+
+  void runStudyGuideJob(job.id);
+
+  response.status(202).json({ item: job });
+});
+
+app.get("/api/study-guide-jobs/:jobId", async (request, response) => {
+  const jobs = await readStudyGuideJobs();
+  const job = jobs.find((item) => item.id === request.params.jobId);
+
+  if (!job) {
+    response.status(404).json({ error: "Study guide job not found." });
+    return;
+  }
+
+  response.json({ item: job });
 });
 
 app.post(
@@ -204,6 +281,25 @@ async function ensureStorage() {
   } catch {
     await fs.writeFile(booksIndexPath, "[]\n");
   }
+
+  try {
+    await fs.access(studyGuideJobsIndexPath);
+  } catch {
+    await fs.writeFile(studyGuideJobsIndexPath, "[]\n");
+  }
+
+  const jobs = await readStudyGuideJobs();
+  const repairedJobs = jobs.map((job) =>
+    job.status === "running" || job.status === "queued"
+      ? {
+          ...job,
+          status: "failed" as const,
+          updatedAt: new Date().toISOString(),
+          error: "Job interrupted before completion.",
+        }
+      : job,
+  );
+  await writeStudyGuideJobs(repairedJobs);
 }
 
 async function readBooks() {
@@ -213,6 +309,71 @@ async function readBooks() {
 
 async function writeBooks(items: BookRecord[]) {
   await fs.writeFile(booksIndexPath, JSON.stringify(items, null, 2));
+}
+
+async function readStudyGuideJobs() {
+  const raw = await fs.readFile(studyGuideJobsIndexPath, "utf8");
+  return JSON.parse(raw) as StudyGuideJob[];
+}
+
+async function writeStudyGuideJobs(items: StudyGuideJob[]) {
+  await fs.writeFile(studyGuideJobsIndexPath, JSON.stringify(items, null, 2));
+}
+
+async function updateStudyGuideJob(
+  jobId: string,
+  updater: (job: StudyGuideJob) => StudyGuideJob,
+) {
+  const jobs = await readStudyGuideJobs();
+  const nextJobs = jobs.map((job) => (job.id === jobId ? updater(job) : job));
+  await writeStudyGuideJobs(nextJobs);
+  return nextJobs.find((job) => job.id === jobId) ?? null;
+}
+
+async function runStudyGuideJob(jobId: string) {
+  const runningJob = await updateStudyGuideJob(jobId, (job) => ({
+    ...job,
+    status: "running",
+    updatedAt: new Date().toISOString(),
+    error: null,
+  }));
+
+  if (!runningJob) {
+    return;
+  }
+
+  try {
+    const books = await readBooks();
+    const book = books.find((item) => item.id === runningJob.bookId);
+
+    if (!book) {
+      throw new Error("Book not found for study guide job.");
+    }
+
+    const chapter = book.chapters.find((item) => item.id === runningJob.chapterId);
+
+    if (!chapter) {
+      throw new Error("Chapter not found for study guide job.");
+    }
+
+    const guide = await generateStudyGuide(book, chapter);
+
+    await updateStudyGuideJob(jobId, (job) => ({
+      ...job,
+      status: "succeeded",
+      updatedAt: new Date().toISOString(),
+      error: null,
+      result: guide,
+    }));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Study guide job failed.";
+    await updateStudyGuideJob(jobId, (job) => ({
+      ...job,
+      status: "failed",
+      updatedAt: new Date().toISOString(),
+      error: message,
+    }));
+  }
 }
 
 async function generateStudyGuide(book: BookRecord, chapter: ChapterRecord): Promise<StudyGuide> {
