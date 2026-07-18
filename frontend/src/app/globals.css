@@ -289,6 +289,13 @@ h2 {
   align-items: flex-start;
 }
 
+.action-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -360,6 +367,67 @@ h2 {
   color: var(--muted);
 }
 
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.history-meta {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.history-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.history-item {
+  display: grid;
+  gap: 8px;
+  text-align: left;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(30, 29, 26, 0.08);
+  background: rgba(255, 255, 255, 0.52);
+  color: var(--muted);
+}
+
+.history-item.active {
+  border-color: rgba(32, 72, 60, 0.28);
+  background: rgba(47, 108, 90, 0.1);
+}
+
+.history-badge {
+  display: inline-flex;
+  width: fit-content;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.status-queued,
+.status-running {
+  background: rgba(181, 82, 45, 0.12);
+  color: var(--signal);
+}
+
+.status-succeeded {
+  background: rgba(47, 108, 90, 0.12);
+  color: var(--accent-deep);
+}
+
+.status-failed {
+  background: rgba(30, 29, 26, 0.08);
+  color: var(--ink);
+}
+
 .split-section {
   display: grid;
   grid-template-columns: 0.9fr 1.1fr;
@@ -425,7 +493,21 @@ h2 {
     flex-direction: column;
   }
 
+  .action-row {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .action-row button {
+    width: 100%;
+  }
+
   .study-status-bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .history-header {
     flex-direction: column;
     align-items: flex-start;
   }

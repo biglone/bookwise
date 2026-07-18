@@ -42,6 +42,18 @@ type StudyGuideJob = {
   result: StudyGuide | null;
 };
 
+type StudyGuideJobListResponse = {
+  items?: StudyGuideJob[];
+  error?: string;
+};
+
+type StudyGuideJobCreateResponse = {
+  item?: StudyGuideJob;
+  reused?: boolean;
+  reason?: "active-job" | "cached-result" | "queued";
+  error?: string;
+};
+
 type StudyGuidePanelProps = {
   bookId: string;
   chapterId: string;
@@ -59,8 +71,13 @@ export function StudyGuidePanel({
 }: StudyGuidePanelProps) {
   const [guide, setGuide] = useState<StudyGuide | null>(initialGuide);
   const [job, setJob] = useState<StudyGuideJob | null>(null);
+  const [history, setHistory] = useState<StudyGuideJob[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    void loadHistory();
+  }, [bookId, chapterId]);
 
   useEffect(() => {
     if (!job || (job.status !== "queued" && job.status !== "running")) {
@@ -78,39 +95,80 @@ export function StudyGuidePanel({
         return;
       }
 
-      setJob(payload.item);
+      const polledJob = payload.item;
 
-      if (payload.item.status === "succeeded" && payload.item.result) {
-        setGuide(payload.item.result);
+      setJob(polledJob);
+      setHistory((current) => mergeJobs(current, polledJob));
+
+      if (polledJob.status === "succeeded" && polledJob.result) {
+        setGuide(polledJob.result);
       }
 
-      if (payload.item.status === "failed") {
-        setError(payload.item.error || "Study guide generation failed.");
+      if (polledJob.status === "failed") {
+        setError(polledJob.error || "Study guide generation failed.");
       }
     }, 2500);
 
     return () => clearInterval(poll);
   }, [job]);
 
-  async function handleGenerate() {
+  async function loadHistory() {
+    const response = await fetch(`/api/books/${bookId}/chapters/${chapterId}/study-guide-jobs`, {
+      cache: "no-store",
+    });
+    const payload = (await response.json()) as StudyGuideJobListResponse;
+
+    if (!response.ok || !payload.items) {
+      setError(payload.error || "Failed to load study guide history.");
+      return;
+    }
+
+    setHistory(payload.items);
+  }
+
+  async function handleGenerate(refresh = false) {
     setError(null);
+    const query = refresh ? "?refresh=1" : "";
 
     const response = await fetch(
-      `/api/books/${bookId}/chapters/${chapterId}/study-guide-jobs`,
+      `/api/books/${bookId}/chapters/${chapterId}/study-guide-jobs${query}`,
       {
         method: "POST",
       },
     );
-    const payload = (await response.json()) as { item?: StudyGuideJob; error?: string };
+    const payload = (await response.json()) as StudyGuideJobCreateResponse;
 
     if (!response.ok || !payload.item) {
       setError(payload.error || "Failed to create study guide job.");
       return;
     }
 
+    const createdJob = payload.item;
+
     startTransition(() => {
-      setJob(payload.item!);
+      setJob(createdJob);
+      setHistory((current) => mergeJobs(current, createdJob));
     });
+
+    if (createdJob.status === "succeeded" && createdJob.result) {
+      setGuide(createdJob.result);
+    }
+
+    if (payload.reused && payload.reason === "cached-result") {
+      setError(null);
+    }
+  }
+
+  function handleReuseJob(targetJob: StudyGuideJob) {
+    startTransition(() => {
+      setJob(targetJob);
+      setHistory((current) => mergeJobs(current, targetJob));
+    });
+
+    if (targetJob.status === "succeeded" && targetJob.result) {
+      setGuide(targetJob.result);
+      setError(null);
+    }
   }
 
   const statusText = useMemo(() => {
@@ -133,6 +191,8 @@ export function StudyGuidePanel({
     return `Failed: ${job.error || "unknown error"}`;
   }, [guide, job]);
 
+  const hasRunningJob = job?.status === "queued" || job?.status === "running";
+
   return (
     <div className="detail-card">
       <div className="detail-topbar">
@@ -141,9 +201,14 @@ export function StudyGuidePanel({
           <h1>{chapterTitle}</h1>
           <p className="lede">{bookTitle}</p>
         </div>
-        <button className="primary-cta" disabled={isPending} onClick={handleGenerate} type="button">
-          {isPending ? "Starting..." : "Generate with AI"}
-        </button>
+        <div className="action-row">
+          <button className="secondary-cta" disabled={isPending || hasRunningJob} onClick={() => void handleGenerate(true)} type="button">
+            {isPending ? "Starting..." : "Regenerate"}
+          </button>
+          <button className="primary-cta" disabled={isPending} onClick={() => void handleGenerate()} type="button">
+            {isPending ? "Starting..." : "Generate with AI"}
+          </button>
+        </div>
       </div>
 
       <div className="study-status-bar">
@@ -152,6 +217,34 @@ export function StudyGuidePanel({
       </div>
 
       {error ? <p className="error-text">{error}</p> : null}
+
+      <section className="study-block">
+        <div className="history-header">
+          <div>
+            <p className="section-label">Job History</p>
+            <h2>Recent runs</h2>
+          </div>
+          <span className="history-meta">{history.length} items</span>
+        </div>
+        {history.length === 0 ? (
+          <p className="panel-copy">No job history yet for this chapter.</p>
+        ) : (
+          <div className="history-list">
+            {history.map((item) => (
+              <button
+                key={item.id}
+                className={`history-item ${job?.id === item.id ? "active" : ""}`}
+                onClick={() => handleReuseJob(item)}
+                type="button"
+              >
+                <span className={`history-badge status-${item.status}`}>{item.status}</span>
+                <strong>{item.result?.provider || item.providerRequested}</strong>
+                <span>{formatTimestamp(item.updatedAt)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
 
       {!guide ? (
         <section className="study-block">
@@ -249,4 +342,18 @@ export function StudyGuidePanel({
       )}
     </div>
   );
+}
+
+function mergeJobs(current: StudyGuideJob[], incoming: StudyGuideJob) {
+  const next = [incoming, ...current.filter((item) => item.id !== incoming.id)];
+  return next
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+    .slice(0, 10);
+}
+
+function formatTimestamp(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
 }
