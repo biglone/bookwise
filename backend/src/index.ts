@@ -18,7 +18,7 @@ const execFileAsync = promisify(execFile);
 const app = express();
 const port = Number(process.env.PORT || 4000);
 const allowedOrigin = process.env.CORS_ORIGIN || "http://localhost:3000";
-const aiProvider = process.env.AI_PROVIDER || "codex-cli";
+const defaultAiProvider = process.env.AI_PROVIDER || "codex-cli";
 const codexBin = process.env.CODEX_BIN || "codex";
 const codexModel = process.env.CODEX_MODEL || "";
 const codexTimeoutMs = Number(process.env.CODEX_TIMEOUT_MS || 180000);
@@ -33,10 +33,15 @@ const storageRoot = path.join(process.cwd(), "data");
 const uploadsRoot = path.join(storageRoot, "uploads");
 const booksIndexPath = path.join(storageRoot, "books.json");
 const studyGuideJobsIndexPath = path.join(storageRoot, "study-guide-jobs.json");
+const aiSettingsPath = path.join(storageRoot, "ai-settings.json");
 const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "",
 });
+
+const supportedAiProviders = ["codex-cli", "heuristic"] as const;
+
+type AiProvider = (typeof supportedAiProviders)[number];
 
 type ChapterRecord = {
   id: string;
@@ -91,11 +96,16 @@ type StudyGuideJob = {
   bookId: string;
   chapterId: string;
   status: "queued" | "running" | "succeeded" | "failed";
-  providerRequested: string;
+  providerRequested: AiProvider;
   createdAt: string;
   updatedAt: string;
   error: string | null;
   result: StudyGuide | null;
+};
+
+type AiSettingsRecord = {
+  provider: AiProvider;
+  updatedAt: string;
 };
 
 app.use(
@@ -118,6 +128,49 @@ app.get("/api/health", (_request, response) => {
 app.get("/api/books", async (_request, response) => {
   const items = await readBooks();
   response.json({ items });
+});
+
+app.get("/api/ai/settings", async (_request, response) => {
+  const item = await readAiSettings();
+
+  response.json({
+    item,
+    providers: supportedAiProviders.map((provider) => ({
+      id: provider,
+      label: provider === "codex-cli" ? "Codex CLI" : "Heuristic Fallback",
+      available: isProviderAvailable(provider),
+      description:
+        provider === "codex-cli"
+          ? "Use the local codex CLI configured on the server."
+          : "Use the built-in local summarization fallback with no external CLI.",
+    })),
+  });
+});
+
+app.put("/api/ai/settings", async (request, response) => {
+  const provider = request.body?.provider;
+
+  if (!isAiProvider(provider)) {
+    response.status(400).json({
+      error: `Unsupported provider. Use one of: ${supportedAiProviders.join(", ")}.`,
+    });
+    return;
+  }
+
+  if (!isProviderAvailable(provider)) {
+    response.status(400).json({
+      error: `${provider} is not available in the current server environment.`,
+    });
+    return;
+  }
+
+  const item: AiSettingsRecord = {
+    provider,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await writeAiSettings(item);
+  response.json({ item });
 });
 
 app.get("/api/books/:bookId", async (request, response) => {
@@ -241,12 +294,13 @@ app.post("/api/books/:bookId/chapters/:chapterId/study-guide-jobs", async (reque
     return;
   }
 
+  const settings = await readAiSettings();
   const job: StudyGuideJob = {
     id: randomUUID(),
     bookId: book.id,
     chapterId: chapter.id,
     status: "queued",
-    providerRequested: aiProvider,
+    providerRequested: settings.provider,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     error: null,
@@ -345,6 +399,15 @@ async function ensureStorage() {
     await fs.writeFile(studyGuideJobsIndexPath, "[]\n");
   }
 
+  try {
+    await fs.access(aiSettingsPath);
+  } catch {
+    await writeAiSettings({
+      provider: normalizeProvider(defaultAiProvider),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
   const jobs = await readStudyGuideJobs();
   const repairedJobs = jobs.map((job) =>
     job.status === "running" || job.status === "queued"
@@ -375,6 +438,20 @@ async function readStudyGuideJobs() {
 
 async function writeStudyGuideJobs(items: StudyGuideJob[]) {
   await fs.writeFile(studyGuideJobsIndexPath, JSON.stringify(items, null, 2));
+}
+
+async function readAiSettings() {
+  const raw = await fs.readFile(aiSettingsPath, "utf8");
+  const parsed = JSON.parse(raw) as Partial<AiSettingsRecord>;
+
+  return {
+    provider: normalizeProvider(parsed.provider),
+    updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : new Date().toISOString(),
+  } satisfies AiSettingsRecord;
+}
+
+async function writeAiSettings(item: AiSettingsRecord) {
+  await fs.writeFile(aiSettingsPath, JSON.stringify(item, null, 2));
 }
 
 async function updateStudyGuideJob(
@@ -413,7 +490,7 @@ async function runStudyGuideJob(jobId: string) {
       throw new Error("Chapter not found for study guide job.");
     }
 
-    const guide = await generateStudyGuide(book, chapter);
+    const guide = await generateStudyGuide(book, chapter, runningJob.providerRequested);
 
     await updateStudyGuideJob(jobId, (job) => ({
       ...job,
@@ -433,8 +510,12 @@ async function runStudyGuideJob(jobId: string) {
   }
 }
 
-async function generateStudyGuide(book: BookRecord, chapter: ChapterRecord): Promise<StudyGuide> {
-  if (aiProvider === "codex-cli") {
+async function generateStudyGuide(
+  book: BookRecord,
+  chapter: ChapterRecord,
+  provider: AiProvider,
+): Promise<StudyGuide> {
+  if (provider === "codex-cli") {
     try {
       return await buildStudyGuideWithCodex(book, chapter);
     } catch (error) {
@@ -642,6 +723,22 @@ async function buildStudyGuideWithCodex(book: BookRecord, chapter: ChapterRecord
       fs.rm(outputPath, { force: true }),
     ]);
   }
+}
+
+function isAiProvider(value: unknown): value is AiProvider {
+  return typeof value === "string" && supportedAiProviders.includes(value as AiProvider);
+}
+
+function normalizeProvider(value: unknown): AiProvider {
+  return isAiProvider(value) ? value : "codex-cli";
+}
+
+function isProviderAvailable(provider: AiProvider) {
+  if (provider === "heuristic") {
+    return true;
+  }
+
+  return provider === "codex-cli";
 }
 
 async function loadBookText(book: BookRecord) {
