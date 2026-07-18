@@ -167,6 +167,31 @@ app.get("/api/books/:bookId/chapters/:chapterId/study-guide", async (request, re
   response.json({ item: latestGuide.result });
 });
 
+app.get("/api/books/:bookId/chapters/:chapterId/study-guide-jobs", async (request, response) => {
+  const items = await readBooks();
+  const book = items.find((item) => item.id === request.params.bookId);
+
+  if (!book) {
+    response.status(404).json({ error: "Book not found." });
+    return;
+  }
+
+  const chapter = book.chapters.find((item) => item.id === request.params.chapterId);
+
+  if (!chapter) {
+    response.status(404).json({ error: "Chapter not found." });
+    return;
+  }
+
+  const jobs = await readStudyGuideJobs();
+  const chapterJobs = jobs
+    .filter((item) => item.bookId === book.id && item.chapterId === chapter.id)
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+    .slice(0, 10);
+
+  response.json({ items: chapterJobs });
+});
+
 app.post("/api/books/:bookId/chapters/:chapterId/study-guide-jobs", async (request, response) => {
   const items = await readBooks();
   const book = items.find((item) => item.id === request.params.bookId);
@@ -183,6 +208,39 @@ app.post("/api/books/:bookId/chapters/:chapterId/study-guide-jobs", async (reque
     return;
   }
 
+  const refreshRequested =
+    request.query.refresh === "1" ||
+    request.query.refresh === "true" ||
+    request.query.force === "1" ||
+    request.query.force === "true";
+
+  const existingJobs = await readStudyGuideJobs();
+  const chapterJobs = existingJobs
+    .filter((item) => item.bookId === book.id && item.chapterId === chapter.id)
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+
+  const activeJob = chapterJobs.find((item) => item.status === "queued" || item.status === "running");
+
+  if (activeJob && !refreshRequested) {
+    response.status(200).json({
+      item: activeJob,
+      reused: true,
+      reason: "active-job",
+    });
+    return;
+  }
+
+  const latestSucceededJob = chapterJobs.find((item) => item.status === "succeeded" && item.result);
+
+  if (latestSucceededJob && !refreshRequested) {
+    response.status(200).json({
+      item: latestSucceededJob,
+      reused: true,
+      reason: "cached-result",
+    });
+    return;
+  }
+
   const job: StudyGuideJob = {
     id: randomUUID(),
     bookId: book.id,
@@ -195,13 +253,12 @@ app.post("/api/books/:bookId/chapters/:chapterId/study-guide-jobs", async (reque
     result: null,
   };
 
-  const jobs = await readStudyGuideJobs();
-  jobs.unshift(job);
-  await writeStudyGuideJobs(jobs);
+  existingJobs.unshift(job);
+  await writeStudyGuideJobs(existingJobs);
 
   void runStudyGuideJob(job.id);
 
-  response.status(202).json({ item: job });
+  response.status(202).json({ item: job, reused: false, reason: "queued" });
 });
 
 app.get("/api/study-guide-jobs/:jobId", async (request, response) => {
