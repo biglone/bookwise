@@ -48,6 +48,33 @@ type BookRecord = {
   chapters: ChapterRecord[];
 };
 
+type StudyGuide = {
+  bookId: string;
+  chapterId: string;
+  chapterTitle: string;
+  generatedAt: string;
+  snapshot: {
+    focus: string;
+    whyItMatters: string;
+    prerequisites: string[];
+  };
+  deepDive: Array<{
+    heading: string;
+    explanation: string;
+    signals: string[];
+  }>;
+  terminology: Array<{
+    term: string;
+    meaning: string;
+  }>;
+  retention: {
+    keyTakeaways: string[];
+    reviewQuestions: string[];
+    practiceIdeas: string[];
+  };
+  sourcePreview: string[];
+};
+
 app.use(
   cors({
     origin: allowedOrigin,
@@ -80,6 +107,26 @@ app.get("/api/books/:bookId", async (request, response) => {
   }
 
   response.json({ item: book });
+});
+
+app.get("/api/books/:bookId/chapters/:chapterId/study-guide", async (request, response) => {
+  const items = await readBooks();
+  const book = items.find((item) => item.id === request.params.bookId);
+
+  if (!book) {
+    response.status(404).json({ error: "Book not found." });
+    return;
+  }
+
+  const chapter = book.chapters.find((item) => item.id === request.params.chapterId);
+
+  if (!chapter) {
+    response.status(404).json({ error: "Chapter not found." });
+    return;
+  }
+
+  const guide = await buildStudyGuide(book, chapter);
+  response.json({ item: guide });
 });
 
 app.post(
@@ -156,6 +203,193 @@ async function readBooks() {
 
 async function writeBooks(items: BookRecord[]) {
   await fs.writeFile(booksIndexPath, JSON.stringify(items, null, 2));
+}
+
+async function buildStudyGuide(book: BookRecord, chapter: ChapterRecord): Promise<StudyGuide> {
+  const sourceText = await loadBookText(book);
+  const excerpt = extractChapterExcerpt(sourceText, book, chapter);
+  const previewParagraphs = excerpt
+    .split(/\n{2,}/)
+    .map((item) => item.replace(/\s+/g, " ").trim())
+    .filter((item) => item.length > 30)
+    .slice(0, 3);
+  const sentences = excerpt
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 24);
+
+  const nextChapter = book.chapters.find((item) => item.order === chapter.order + 1);
+  const previousChapter = book.chapters.find((item) => item.order === chapter.order - 1);
+  const focus = sentences[0] || `${chapter.title} is a core section in ${book.title}.`;
+  const whyItMatters = nextChapter
+    ? `This chapter sets up ideas that likely flow into "${nextChapter.title}", so understanding its definitions and examples first will reduce friction later.`
+    : `This chapter is part of the later-stage material in ${book.title}, so it likely consolidates earlier concepts into a more complete mental model.`;
+  const prerequisites = [
+    previousChapter
+      ? `Review the previous chapter: ${previousChapter.title}.`
+      : `Review the book's introduction and earlier definitions before deep study.`,
+    `Track repeated nouns, code terms, and architecture labels in "${chapter.title}".`,
+    `Read with the goal of reconstructing the argument order, not just memorizing headlines.`,
+  ];
+
+  const deepDive = buildDeepDive(chapter.title, sentences);
+  const terminology = extractTerminology(chapter.title, sentences);
+
+  return {
+    bookId: book.id,
+    chapterId: chapter.id,
+    chapterTitle: chapter.title,
+    generatedAt: new Date().toISOString(),
+    snapshot: {
+      focus,
+      whyItMatters,
+      prerequisites,
+    },
+    deepDive,
+    terminology,
+    retention: {
+      keyTakeaways: buildKeyTakeaways(chapter.title, sentences),
+      reviewQuestions: buildReviewQuestions(chapter.title, terminology, nextChapter),
+      practiceIdeas: buildPracticeIdeas(chapter.title, book.format),
+    },
+    sourcePreview: previewParagraphs.length > 0 ? previewParagraphs : [focus],
+  };
+}
+
+async function loadBookText(book: BookRecord) {
+  const filePath = path.join(uploadsRoot, book.storedFileName);
+  const buffer = await fs.readFile(filePath);
+
+  switch (book.format) {
+    case "markdown":
+    case "text":
+      return buffer.toString("utf8");
+    case "pdf": {
+      const parserInstance = new PDFParse({ data: buffer });
+      const text = await parserInstance.getText();
+      await parserInstance.destroy();
+      return text.text;
+    }
+    case "epub": {
+      const zip = new AdmZip(buffer);
+      return zip
+        .getEntries()
+        .filter((entry) => /\.(xhtml|html|htm|ncx)$/i.test(entry.entryName))
+        .map((entry) => entry.getData().toString("utf8").replace(/<[^>]+>/g, " "))
+        .join("\n\n");
+    }
+    default:
+      return "";
+  }
+}
+
+function extractChapterExcerpt(sourceText: string, book: BookRecord, chapter: ChapterRecord) {
+  if (!sourceText.trim()) {
+    return chapter.title;
+  }
+
+  const currentIndex = sourceText.indexOf(chapter.title);
+  const nextChapter = book.chapters.find((item) => item.order === chapter.order + 1);
+  const nextIndex = nextChapter ? sourceText.indexOf(nextChapter.title, currentIndex + chapter.title.length) : -1;
+
+  if (currentIndex >= 0) {
+    const endIndex = nextIndex > currentIndex ? nextIndex : Math.min(sourceText.length, currentIndex + 2400);
+    return sourceText.slice(currentIndex, endIndex).trim();
+  }
+
+  return sourceText.slice(0, 2400).trim();
+}
+
+function buildDeepDive(chapterTitle: string, sentences: string[]) {
+  const segments = [sentences.slice(0, 2), sentences.slice(2, 4), sentences.slice(4, 6)].filter(
+    (item) => item.length > 0,
+  );
+
+  if (segments.length === 0) {
+    return [
+      {
+        heading: "Main idea",
+        explanation: `${chapterTitle} should be studied by tracking its definitions, examples, and tradeoffs in order.`,
+        signals: ["definition", "example", "tradeoff"],
+      },
+    ];
+  }
+
+  return segments.map((segment, index) => ({
+    heading:
+      index === 0
+        ? "Concept framing"
+        : index === 1
+          ? "Mechanism and examples"
+          : "Implications and cautions",
+    explanation: segment.join(" "),
+    signals: extractSignals(segment.join(" ")),
+  }));
+}
+
+function extractSignals(source: string) {
+  const matches: string[] = source.match(/\b[A-Za-z][A-Za-z0-9_-]{4,}\b/g) || [];
+  return matches.filter((item, index) => matches.indexOf(item) === index).slice(0, 4);
+}
+
+function extractTerminology(chapterTitle: string, sentences: string[]) {
+  const titleTerms = chapterTitle
+    .replace(/[^A-Za-z0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter((item) => item.length > 3);
+  const bodyTerms = extractSignals(sentences.join(" "));
+  const terms = [...titleTerms, ...bodyTerms]
+    .filter((item, index, array) => array.indexOf(item) === index)
+    .slice(0, 6);
+
+  return terms.map((term) => ({
+    term,
+    meaning: `In this chapter, "${term}" is important enough that you should identify where the author defines it, applies it, and contrasts it with alternatives.`,
+  }));
+}
+
+function buildKeyTakeaways(chapterTitle: string, sentences: string[]) {
+  const base = [
+    `Map the chapter around "${chapterTitle}" instead of memorizing isolated details.`,
+    `Keep the author’s reasoning order intact when taking notes.`,
+    `Mark every example, caveat, or code fragment that changes interpretation.`,
+  ];
+
+  const derived = sentences.slice(0, 2).map((sentence) => sentence.replace(/\s+/g, " ").trim());
+  return [...derived, ...base].slice(0, 5);
+}
+
+function buildReviewQuestions(
+  chapterTitle: string,
+  terminology: Array<{ term: string; meaning: string }>,
+  nextChapter: ChapterRecord | undefined,
+) {
+  const questions = [
+    `What problem is "${chapterTitle}" trying to solve or clarify?`,
+    `Which definitions in this chapter are foundational rather than optional?`,
+    `Which example or mechanism best demonstrates the chapter’s main claim?`,
+  ];
+
+  if (terminology[0]) {
+    questions.push(`How would you explain "${terminology[0].term}" without using the book’s exact wording?`);
+  }
+
+  if (nextChapter) {
+    questions.push(`How does this chapter prepare you for "${nextChapter.title}"?`);
+  }
+
+  return questions.slice(0, 5);
+}
+
+function buildPracticeIdeas(chapterTitle: string, format: string) {
+  return [
+    `Write a one-page note that reconstructs the full argument order of "${chapterTitle}".`,
+    `Make a glossary card set for the repeated terms in this chapter.`,
+    format === "pdf" || format === "epub"
+      ? `Annotate where the author introduces an idea, gives an example, and adds a caveat.`
+      : `Mark the exact section boundaries where the chapter shifts from concept to example to implication.`,
+  ];
 }
 
 function detectFormat(fileName: string, mimeType: string) {
