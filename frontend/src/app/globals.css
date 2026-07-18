@@ -231,6 +231,19 @@ h2 {
   border: 1px solid rgba(30, 29, 26, 0.08);
 }
 
+.chapter-meta {
+  display: grid;
+  gap: 8px;
+}
+
+.chapter-link {
+  width: fit-content;
+  color: var(--accent-deep);
+  font-size: 0.92rem;
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
+
 .chapter-order {
   color: var(--accent-deep);
   font-variant-numeric: tabular-nums;
@@ -247,6 +260,86 @@ h2 {
 .error-text {
   margin: 0;
   color: var(--signal);
+}
+
+.detail-shell {
+  margin-top: 16px;
+}
+
+.detail-card {
+  display: grid;
+  gap: 22px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  border-radius: 28px;
+  padding: 28px;
+}
+
+.detail-topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.study-section,
+.study-block {
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid rgba(30, 29, 26, 0.08);
+  border-radius: 20px;
+  padding: 20px;
+}
+
+.study-block h3 {
+  margin: 16px 0 8px;
+}
+
+.study-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.study-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.preview-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.preview-card {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(47, 108, 90, 0.08);
+  border: 1px solid rgba(32, 72, 60, 0.12);
+}
+
+.token-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.token-pill {
+  display: inline-flex;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(32, 72, 60, 0.12);
+  color: var(--accent-deep);
+  font-size: 0.9rem;
 }
 
 .split-section {
@@ -288,6 +381,7 @@ h2 {
   .grid-section,
   .workspace,
   .library-panel,
+  .detail-grid,
   .split-section {
     grid-template-columns: 1fr;
   }
@@ -306,6 +400,10 @@ h2 {
   }
 
   .cta-row {
+    flex-direction: column;
+  }
+
+  .detail-topbar {
     flex-direction: column;
   }
 }

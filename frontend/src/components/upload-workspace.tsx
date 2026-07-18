@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 
 type Chapter = {
@@ -113,7 +114,15 @@ export function UploadWorkspace({ initialBooks }: UploadWorkspaceProps) {
               {selectedBook.chapters.map((chapter) => (
                 <li key={chapter.id} className={`chapter-row level-${chapter.level}`}>
                   <span className="chapter-order">{chapter.order}</span>
-                  <span>{chapter.title}</span>
+                  <div className="chapter-meta">
+                    <span>{chapter.title}</span>
+                    <Link
+                      className="chapter-link"
+                      href={`/books/${selectedBook.id}/chapters/${chapter.id}`}
+                    >
+                      Open study guide
+                    </Link>
+                  </div>
                 </li>
               ))}
             </ol>
