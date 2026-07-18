@@ -109,8 +109,19 @@ When this skill is used for a software product, also provide:
 
 - suggested pipeline stages
 - data model suggestions for `book`, `chapter`, `section`, `study_note`
+- ai provider routing suggestions for `codex-cli`, fallback mode, and future API providers
 - prompts for chapter generation
 - quality checks for omission and over-compression
+
+## Product integration notes
+
+If the host product routes generation through a backend service:
+
+- keep provider selection server-side, not in the browser
+- persist the provider used for each chapter job
+- allow cached-result reuse before creating a new expensive job
+- keep a local fallback path when the primary CLI or API provider fails
+- expose provider status clearly so users know whether they are using CLI or fallback generation
 
 ## Example prompt patterns
 
