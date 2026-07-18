@@ -6,10 +6,16 @@ services:
     environment:
       PORT: 4000
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      AI_PROVIDER: ${AI_PROVIDER:-codex-cli}
+      CODEX_BIN: ${CODEX_BIN:-codex}
+      CODEX_MODEL: ${CODEX_MODEL:-}
+      CODEX_TIMEOUT_MS: ${CODEX_TIMEOUT_MS:-180000}
+      CODEX_HOME: /root/.codex
     ports:
       - "127.0.0.1:44000:4000"
     volumes:
       - bookwise-data:/app/data
+      - ${CODEX_HOME_DIR:-/home/Biglone/.codex}:/root/.codex
     restart: unless-stopped
 
   frontend:

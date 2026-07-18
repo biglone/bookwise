@@ -8,12 +8,21 @@ import { XMLParser } from "fast-xml-parser";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import os from "node:os";
 
 dotenv.config();
+const execFileAsync = promisify(execFile);
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
 const allowedOrigin = process.env.CORS_ORIGIN || "http://localhost:3000";
+const aiProvider = process.env.AI_PROVIDER || "codex-cli";
+const codexBin = process.env.CODEX_BIN || "codex";
+const codexModel = process.env.CODEX_MODEL || "";
+const codexTimeoutMs = Number(process.env.CODEX_TIMEOUT_MS || 180000);
+const codexHome = process.env.CODEX_HOME || "";
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -49,6 +58,7 @@ type BookRecord = {
 };
 
 type StudyGuide = {
+  provider: string;
   bookId: string;
   chapterId: string;
   chapterTitle: string;
@@ -125,7 +135,7 @@ app.get("/api/books/:bookId/chapters/:chapterId/study-guide", async (request, re
     return;
   }
 
-  const guide = await buildStudyGuide(book, chapter);
+  const guide = await generateStudyGuide(book, chapter);
   response.json({ item: guide });
 });
 
@@ -205,7 +215,19 @@ async function writeBooks(items: BookRecord[]) {
   await fs.writeFile(booksIndexPath, JSON.stringify(items, null, 2));
 }
 
-async function buildStudyGuide(book: BookRecord, chapter: ChapterRecord): Promise<StudyGuide> {
+async function generateStudyGuide(book: BookRecord, chapter: ChapterRecord): Promise<StudyGuide> {
+  if (aiProvider === "codex-cli") {
+    try {
+      return await buildStudyGuideWithCodex(book, chapter);
+    } catch (error) {
+      console.error("codex-cli study guide generation failed, falling back to heuristic:", error);
+    }
+  }
+
+  return buildHeuristicStudyGuide(book, chapter);
+}
+
+async function buildHeuristicStudyGuide(book: BookRecord, chapter: ChapterRecord): Promise<StudyGuide> {
   const sourceText = await loadBookText(book);
   const excerpt = extractChapterExcerpt(sourceText, book, chapter);
   const previewParagraphs = excerpt
@@ -237,6 +259,7 @@ async function buildStudyGuide(book: BookRecord, chapter: ChapterRecord): Promis
   const terminology = extractTerminology(chapter.title, sentences);
 
   return {
+    provider: "heuristic",
     bookId: book.id,
     chapterId: chapter.id,
     chapterTitle: chapter.title,
@@ -255,6 +278,152 @@ async function buildStudyGuide(book: BookRecord, chapter: ChapterRecord): Promis
     },
     sourcePreview: previewParagraphs.length > 0 ? previewParagraphs : [focus],
   };
+}
+
+async function buildStudyGuideWithCodex(book: BookRecord, chapter: ChapterRecord): Promise<StudyGuide> {
+  const sourceText = await loadBookText(book);
+  const excerpt = extractChapterExcerpt(sourceText, book, chapter).slice(0, 8000);
+  const schemaPath = path.join(os.tmpdir(), `bookwise-study-guide-schema-${randomUUID()}.json`);
+  const outputPath = path.join(os.tmpdir(), `bookwise-study-guide-output-${randomUUID()}.json`);
+
+  const schema = {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "object",
+    properties: {
+      snapshot: {
+        type: "object",
+        properties: {
+          focus: { type: "string" },
+          whyItMatters: { type: "string" },
+          prerequisites: { type: "array", items: { type: "string" } },
+        },
+        required: ["focus", "whyItMatters", "prerequisites"],
+        additionalProperties: false,
+      },
+      deepDive: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            heading: { type: "string" },
+            explanation: { type: "string" },
+            signals: { type: "array", items: { type: "string" } },
+          },
+          required: ["heading", "explanation", "signals"],
+          additionalProperties: false,
+        },
+      },
+      terminology: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            term: { type: "string" },
+            meaning: { type: "string" },
+          },
+          required: ["term", "meaning"],
+          additionalProperties: false,
+        },
+      },
+      retention: {
+        type: "object",
+        properties: {
+          keyTakeaways: { type: "array", items: { type: "string" } },
+          reviewQuestions: { type: "array", items: { type: "string" } },
+          practiceIdeas: { type: "array", items: { type: "string" } },
+        },
+        required: ["keyTakeaways", "reviewQuestions", "practiceIdeas"],
+        additionalProperties: false,
+      },
+      sourcePreview: {
+        type: "array",
+        items: { type: "string" },
+      },
+    },
+    required: ["snapshot", "deepDive", "terminology", "retention", "sourcePreview"],
+    additionalProperties: false,
+  };
+
+  const prompt = [
+    "You are generating a structured study guide for an uploaded book chapter.",
+    "Return only content that fits the provided JSON schema.",
+    "Do not mention the schema. Do not include markdown fences.",
+    "Preserve fidelity. Avoid shallow summarization.",
+    "",
+    `Book title: ${book.title}`,
+    `Book format: ${book.format}`,
+    `Chapter title: ${chapter.title}`,
+    "",
+    "Required output behavior:",
+    "- snapshot.focus: explain the central idea of the chapter in 2-4 sentences",
+    "- snapshot.whyItMatters: explain where this chapter fits in the learning path",
+    "- snapshot.prerequisites: 3 concise bullets",
+    "- deepDive: 2-4 sections with clear headings and dense explanations",
+    "- terminology: 3-6 important terms with clear meanings",
+    "- retention.keyTakeaways: 3-5 bullets",
+    "- retention.reviewQuestions: 4-6 questions",
+    "- retention.practiceIdeas: 2-4 practical study actions",
+    "- sourcePreview: 1-3 short quoted or paraphrased source snippets",
+    "",
+    "Chapter excerpt:",
+    excerpt || chapter.title,
+  ].join("\n");
+
+  try {
+    await fs.writeFile(schemaPath, JSON.stringify(schema, null, 2));
+
+    const args = [
+      "exec",
+      "--dangerously-bypass-approvals-and-sandbox",
+      "--skip-git-repo-check",
+      "--ephemeral",
+      "--output-schema",
+      schemaPath,
+      "-o",
+      outputPath,
+      "-C",
+      process.cwd(),
+    ];
+
+    if (codexModel) {
+      args.push("--model", codexModel);
+    }
+
+    args.push(prompt);
+
+    const execEnv = {
+      ...process.env,
+      ...(codexHome ? { CODEX_HOME: codexHome } : {}),
+    };
+
+    await execFileAsync(codexBin, args, {
+      cwd: process.cwd(),
+      env: execEnv,
+      timeout: codexTimeoutMs,
+      maxBuffer: 1024 * 1024 * 8,
+    });
+
+    const raw = await fs.readFile(outputPath, "utf8");
+    const parsed = JSON.parse(raw) as Omit<StudyGuide, "provider" | "bookId" | "chapterId" | "chapterTitle" | "generatedAt">;
+
+    return {
+      provider: "codex-cli",
+      bookId: book.id,
+      chapterId: chapter.id,
+      chapterTitle: chapter.title,
+      generatedAt: new Date().toISOString(),
+      snapshot: parsed.snapshot,
+      deepDive: parsed.deepDive,
+      terminology: parsed.terminology,
+      retention: parsed.retention,
+      sourcePreview: parsed.sourcePreview,
+    };
+  } finally {
+    await Promise.all([
+      fs.rm(schemaPath, { force: true }),
+      fs.rm(outputPath, { force: true }),
+    ]);
+  }
 }
 
 async function loadBookText(book: BookRecord) {
