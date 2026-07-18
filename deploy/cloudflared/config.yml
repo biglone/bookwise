@@ -1,0 +1,8 @@
+tunnel: 1caa17d7-3500-43a8-a724-9530b798ba1e
+credentials-file: /etc/cloudflared/credentials.json
+protocol: http2
+
+ingress:
+  - hostname: bookwise.biglone.tech
+    service: http://frontend:3000
+  - service: http_status:404

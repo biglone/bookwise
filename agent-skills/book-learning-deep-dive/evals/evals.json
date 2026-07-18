@@ -1,0 +1,23 @@
+{
+  "skill_name": "book-learning-deep-dive",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "帮我把这本英文数据库技术书的第 3 章做成适合学习的讲解，不要只给我一页摘要，我希望保留术语、关键推理和例子。",
+      "expected_output": "A layered chapter study guide with section explanations, terminology, reasoning flow, and retention material.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "这章有不少代码和架构图，帮我按小节解释每部分在说明什么，并指出容易误解的地方。",
+      "expected_output": "A section-by-section explanation that covers code intent, diagram meaning, and common misunderstandings.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "我要做一个上传技术电子书后自动生成章节导学的平台，你先给我设计适合 Agent 的学习内容生成流程。",
+      "expected_output": "A product-oriented workflow covering ingestion, chapter parsing, study-guide generation, and quality checks.",
+      "files": []
+    }
+  ]
+}
