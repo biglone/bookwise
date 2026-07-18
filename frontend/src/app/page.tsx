@@ -1,4 +1,5 @@
 import { UploadWorkspace } from "@/components/upload-workspace";
+import { ProviderSettingsPanel } from "@/components/provider-settings-panel";
 
 type Book = {
   id: string;
@@ -14,6 +15,18 @@ type Book = {
     level: number;
     order: number;
   }>;
+};
+
+type AiProvider = {
+  id: "codex-cli" | "heuristic";
+  label: string;
+  available: boolean;
+  description: string;
+};
+
+type AiSettings = {
+  provider: AiProvider["id"];
+  updatedAt: string;
 };
 
 async function getApiStatus() {
@@ -54,6 +67,25 @@ async function getBooks() {
   }
 }
 
+async function getAiSettings() {
+  const baseUrl = process.env.API_INTERNAL_URL || "http://localhost:4000";
+
+  try {
+    const response = await fetch(`${baseUrl}/api/ai/settings`, {
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = (await response.json()) as { item: AiSettings; providers: AiProvider[] };
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 const pillars = [
   {
     title: "图书上传与章节化",
@@ -82,6 +114,7 @@ const architecture = [
 export default async function Home() {
   const apiStatus = await getApiStatus();
   const books = await getBooks();
+  const aiSettings = await getAiSettings();
 
   return (
     <main className="page-shell">
@@ -118,6 +151,13 @@ export default async function Home() {
           </article>
         ))}
       </section>
+
+      {aiSettings ? (
+        <ProviderSettingsPanel
+          initialSettings={aiSettings.item}
+          providers={aiSettings.providers}
+        />
+      ) : null}
 
       <UploadWorkspace initialBooks={books} />
 
