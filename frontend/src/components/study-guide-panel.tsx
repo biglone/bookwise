@@ -59,6 +59,8 @@ type StudyGuidePanelProps = {
   chapterId: string;
   bookTitle: string;
   chapterTitle: string;
+  chapterOrder: number;
+  chapterCount: number;
   initialGuide: StudyGuide | null;
 };
 
@@ -67,6 +69,8 @@ export function StudyGuidePanel({
   chapterId,
   bookTitle,
   chapterTitle,
+  chapterOrder,
+  chapterCount,
   initialGuide,
 }: StudyGuidePanelProps) {
   const [guide, setGuide] = useState<StudyGuide | null>(initialGuide);
@@ -198,6 +202,9 @@ export function StudyGuidePanel({
       <div className="detail-topbar">
         <div>
           <p className="section-label">章节导学</p>
+          <p className="chapter-kicker">
+            第 {chapterOrder} 节 / 共 {chapterCount} 节
+          </p>
           <h1>{chapterTitle}</h1>
           <p className="lede">{bookTitle}</p>
         </div>

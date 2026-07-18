@@ -106,6 +106,7 @@ export function UploadWorkspace({ initialBooks }: UploadWorkspaceProps) {
                   onClick={() => setSelectedId(book.id)}
                   type="button"
                 >
+                  <span className="book-kicker">图书 {book.id === selectedBook?.id ? "已选中" : "可切换"}</span>
                   <strong>{book.title}</strong>
                   <span>
                     {book.format.toUpperCase()} · {book.chapterCount} 章
@@ -124,10 +125,11 @@ export function UploadWorkspace({ initialBooks }: UploadWorkspaceProps) {
             {selectedBook ? (
               <ol className="chapter-list">
                 {selectedBook.chapters.map((chapter) => (
-                  <li key={chapter.id} className={`chapter-row level-${chapter.level}`}>
-                    <span className="chapter-order">{chapter.order}</span>
+                <li key={chapter.id} className={`chapter-row level-${chapter.level}`}>
+                    <span className="chapter-order">第 {chapter.order} 节</span>
                     <div className="chapter-meta">
-                      <span>{chapter.title}</span>
+                      <strong>{chapter.title}</strong>
+                      <span className="chapter-level">目录层级 {chapter.level}</span>
                       <Link
                         className="chapter-link"
                         href={`/books/${selectedBook.id}/chapters/${chapter.id}`}
